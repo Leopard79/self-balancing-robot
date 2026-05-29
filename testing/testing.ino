@@ -146,7 +146,7 @@ void loop() {
     mpu.update();
     input = mpu.getAngleX() + 180;
 
-    if (abs(setpoint - input) < 0.5) {
+    if (abs(setpoint - input) < 1) {
         stopMotors();
         Serial.println(input, 2);
         return;
@@ -172,10 +172,10 @@ void forward(double spd) {
     s = constrain(s, MIN_SPEED, 255);
     analogWrite(ENA, s);
     analogWrite(ENB, s);
-    digitalWrite(IN1, HIGH);
-    digitalWrite(IN2, LOW);
-    digitalWrite(IN3, HIGH);
-    digitalWrite(IN4, LOW);
+    digitalWrite(IN1, LOW);
+    digitalWrite(IN2, HIGH);
+    digitalWrite(IN3, LOW);
+    digitalWrite(IN4, HIGH);
 }
 
 void backward(double spd) {
@@ -183,10 +183,10 @@ void backward(double spd) {
     s = constrain(s, MIN_SPEED, 255);
     analogWrite(ENA, s);
     analogWrite(ENB, s);
-    digitalWrite(IN1, LOW);
-    digitalWrite(IN2, HIGH);
-    digitalWrite(IN3, LOW);
-    digitalWrite(IN4, HIGH);
+    digitalWrite(IN1, HIGH);
+    digitalWrite(IN2, LOW);
+    digitalWrite(IN3, HIGH);
+    digitalWrite(IN4, LOW);
 }
 
 void stopMotors() {
