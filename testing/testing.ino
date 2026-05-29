@@ -2,98 +2,84 @@
 #include <Wire.h>
 
 class PID {
-    private:
-        double dispKp, dispKi, dispKd;
-        double kp, ki, kd;
+  private:
+    double kp, ki, kd;
+    double dispKp, dispKi, dispKd;
 
-        double *myInput;
-        double *myOutput;
-        double *mySetpoint;
+    double *myInput, *myOutput, *mySetpoint;
 
-        unsigned long lastTime;
-        double ITerm, lastInput;
-        double outMin, outMax;
-        unsigned long SampleTime;
+    double ITerm, lastInput;
+    double outMin, outMax;
+    unsigned long lastTime, SampleTime;
 
-    public:
-        PID(double* Input, double* Output, double* Setpoint,
-            double Kp, double Ki, double Kd) {
-            myInput    = Input;
-            myOutput   = Output;
-            mySetpoint = Setpoint;
+  public:
+    PID(double* Input, double* Output, double* Setpoint,
+        double Kp, double Ki, double Kd) {
 
-            SampleTime = 10;
-            outMin = -255;
-            outMax =  255;
-            ITerm  = 0;
+    myInput    = Input;
+    myOutput   = Output;
+    mySetpoint = Setpoint;
+    SampleTime = 10;
 
-            SetTunings(Kp, Ki, Kd);
+    SetOutputLimits(-255, 255);
+    SetTunings(Kp, Ki, Kd);
+    lastTime = millis() - SampleTime;
+    }
 
-            // ── Initialize مطابق للمكتبة ──
-            ITerm     = *myOutput;
-            lastInput = *myInput;
-            if (ITerm > outMax) ITerm = outMax;
-            if (ITerm < outMin) ITerm = outMin;
+    void Initialize(){
+        ITerm     = *myOutput;
+        lastInput = *myInput;
+        if (ITerm > outMax) ITerm = outMax;
+        if (ITerm < outMin) ITerm = outMin;
+    }
 
-            lastTime = millis() - SampleTime;
-        }
+    void Compute() {
+        unsigned long now = millis();
+        if ((now - lastTime) >= SampleTime) {
 
-        bool Compute() {
-            unsigned long now = millis();
-            unsigned long timeChange = (now - lastTime);
+            double input = *myInput;
+            double error = *mySetpoint - input;
 
-            if (timeChange >= SampleTime) {
-                double input = *myInput;
-                double error = *mySetpoint - input;
-
-                // ── Anti-Windup مطابق للمكتبة ──
-                ITerm += (ki * error);
-                if (ITerm > outMax) ITerm = outMax;
-                else if (ITerm < outMin) ITerm = outMin;
-
-                // ── D من input — يمنع Derivative Kick ──
-                double dInput = (input - lastInput);
-
-                // ── حساب output مطابق للمكتبة ──
-                double output = (kp * error) + ITerm - (kd * dInput);
-
-                if (output > outMax) output = outMax;
-                else if (output < outMin) output = outMin;
-
-                *myOutput = output;
-
-                lastInput = input;
-                lastTime  = now;
-                return true;
-            }
-            return false;
-        }
-
-        void SetTunings(double Kp, double Ki, double Kd) {
-            if (Kp < 0 || Ki < 0 || Kd < 0) return;
-
-            dispKp = Kp; dispKi = Ki; dispKd = Kd;
-
-            double SampleTimeInSec = ((double)SampleTime) / 1000.0;
-            kp = Kp;
-            ki = Ki * SampleTimeInSec;
-            kd = Kd / SampleTimeInSec;
-        }
-
-        void SetOutputLimits(double Min, double Max) {
-            if (Min >= Max) return;
-            outMin = Min;
-            outMax = Max;
-
-            if (*myOutput > outMax) *myOutput = outMax;
-            else if (*myOutput < outMin) *myOutput = outMin;
-
+            ITerm += (ki * error);
             if (ITerm > outMax) ITerm = outMax;
             else if (ITerm < outMin) ITerm = outMin;
+
+            double dInput = (input - lastInput);
+            double output = (kp * error) + ITerm - (kd * dInput);
+
+            if (output > outMax) output = outMax;
+            else if (output < outMin) output = outMin;
+
+            *myOutput = output;
+            lastInput = input;
+            lastTime  = now;
         }
+    }
+
+    void SetTunings(double Kp, double Ki, double Kd) {
+        if (Kp < 0 || Ki < 0 || Kd < 0) return;
+
+        dispKp = Kp; dispKi = Ki; dispKd = Kd;
+
+        double SampleTimeInSec = (double)SampleTime / 1000.0;
+        kp = Kp;
+        ki = Ki * SampleTimeInSec;
+        kd = Kd / SampleTimeInSec;
+    }
+
+    void SetOutputLimits(double Min, double Max) {
+        if (Min >= Max) return;
+        outMin = Min;
+        outMax = Max;
+
+        if (*myOutput > outMax) *myOutput = outMax;
+        else if (*myOutput < outMin) *myOutput = outMin;
+        if (ITerm > outMax) ITerm = outMax;
+        else if (ITerm < outMin) ITerm = outMin;
+        
+    }
 };
 
-// ── إعداد النظام ──
 MPU6050 mpu(Wire);
 
 #define ENA 10
@@ -136,11 +122,15 @@ void setup() {
     mpu.calcOffsets();
     Serial.println("OK جاهز");
 
-    myPID.SetOutputLimits(-255,255);
+    mpu.update();
+    input = mpu.getAngleX() + 180;
+
+    myPID.Initialize();
+    myPID.SetOutputLimits(-255, 255);
+
 }
 
 void loop() {
-    // ── 1 استقبال أوامر MATLAB ──
     if (Serial.available() > 0) {
         String msg = Serial.readStringUntil('\n');
         msg.trim();
@@ -153,21 +143,17 @@ void loop() {
         myPID.SetTunings(Kp, Ki, Kd);
     }
 
-    // ── 2 قراءة الزاوية ──
     mpu.update();
     input = mpu.getAngleX() + 180;
 
-    // ── 3 منطقة خاملة ──
     if (abs(setpoint - input) < 0.5) {
         stopMotors();
         Serial.println(input, 2);
         return;
     }
 
-    // ── 4 حساب PID ──
     myPID.Compute();
 
-    // ── 5 تحريك المحركات ──
     if (input > 150 && input < 210) {
         if      (output > 0) forward(output);
         else if (output < 0) backward(output);
@@ -176,10 +162,9 @@ void loop() {
         stopMotors();
     }
 
-    // ── 6 إرسال لـ MATLAB ──
     Serial.println(input, 2);
 
-    delay(5);  // ← مطابق لكود المكتبة
+    delay(5);
 }
 
 void forward(double spd) {
