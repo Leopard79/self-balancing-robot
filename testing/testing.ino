@@ -42,9 +42,9 @@ class PID {
 
             ITerm += (ki * error);
             if (ITerm > outMax) ITerm = outMax;
-            else if (ITerm < outMin) ITerm = outMin;
+            else if (ITerm < outMin) ITerm = outMin; 
 
-            double dInput = (input - lastInput);
+            double dInput = (input - lastInput);// D = (dError - DlastError)
             double output = (kp * error) + ITerm - (kd * dInput);
 
             if (output > outMax) output = outMax;
